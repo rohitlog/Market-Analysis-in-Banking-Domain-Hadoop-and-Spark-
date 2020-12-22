@@ -1,0 +1,75 @@
+# Market Analysis in Banking Domain
+
+#Load data and create a Spark data frame
+
+val bank_people_data = spark.read.option("multiline","true").json("/user/crohit1000gmail/bank_edited.json");
+
+bank_people_data.show()
+
+bank_people_data.registerTempTable("datanewtable")
+
+#Give the maximum, mean, and minimum age of the average targeted customer
+   
+bank_people_data.select(max($"age")).show()
+bank_people_data.select(min($"age")).show()
+bank_people_data.select(avg($"age")).show() 
+
+#Check the quality of customers by checking average balance, median balance of customers
+
+bank_people_data.select(avg($"balance")).show()
+val median = spark.sql("SELECT percentile_approx(balance, 0.5) FROM datanewtable").show()
+
+
+# Check if age matters in marketing subscription for deposit
+
+val agedata = spark.sql("select age, count(*) as number from datanewtable where y='yes' group by age order by number desc")
+agedata.show()
+
+# Check if marital status mattered for a subscription to deposit
+
+val maritaldata = spark.sql("select marital, count(*) as number from datanewtable where y='yes' group by marital order by number desc")
+maritaldata.show()
+
+# Check if age and marital status together mattered for a subscription to deposit scheme
+
+val ageandmaritaldata = spark.sql("select age, marital, count(*) as number from datanewtable where y='yes' group by age,marital order by number desc")
+ageandmaritaldata.show()
+
+# Do feature engineering for the bank and find the right age effect on the campaign.
+
+val agedata = spark.udf.register("agedata",(age:Int) => {
+if (age < 20)
+"Teen"
+else if (age > 20 && age <= 32)
+"Young"
+else if (age > 33 && age <= 55)
+"Middle Aged"
+else
+"old"
+})
+
+//Replacing the old age column with the new age column
+
+val banknewDF = bank_people_data.withColumn("age",agedata(bank_people_data("age")))
+banknewDF.show()
+
+banknewDF.registerTempTable("banknewtable")
+
+//which age group subscribed the most
+
+val targetage = spark.sql("select age, count(*) as number from banknewtable where y='yes' group by age order by number desc")
+targetage.show()
+
+//pipelining with string Indexer
+
+import org.apache.spark.ml.feature.StringIndexer
+
+val agedata2 = new StringIndexer().setInputCol("age").setOutputCol("ageindex")
+
+//Fitting the model
+
+var strindModel = agedata2.fit(banknewDF)
+
+//assigns generated value of index of the column, by feature engineering
+
+strindModel.transform(banknewDF).select("age","ageIndex").show(5)
